@@ -8,14 +8,19 @@ import java.io.*;
  * 
  */
 public class ProtoServer <T>{
+    private final Class<T> modelClass;
     private int PORT;
     private ServerSocket serverSocket;
-    private String name = "localhost";
-    private final ConcurrentHashMap<String, Boolean> ackedClients = new ConcurrentHashMap();
+    private static String name = "localhost";
+    private static final ConcurrentHashMap<String, Boolean> ackedClients = new ConcurrentHashMap();
+    private static final ConcurrentHashMap<Class<?>, ProtoServer<?>> subServers = new ConcurrentHashMap<>();
+
 
     // the database
-    private DataBindings<T> database;
+    private DataBindings<T> database = new DataBindings<>();
 
+
+    // create a static class instance that handles all the classes
     
     // bind the database to a database structure
 
@@ -26,11 +31,12 @@ public class ProtoServer <T>{
     }
 
     
-    public ProtoServer(int port)
+    private ProtoServer(Class<T> modelClass, int port)
     {   
+        this.modelClass = modelClass;
+        this.PORT = port;
         try 
         {
-            this.PORT = port;
             this.serverSocket = new ServerSocket(PORT);
         }
         catch(IOException e)
@@ -44,7 +50,35 @@ public class ProtoServer <T>{
     // Until the client themself close the connection. 
 
 
+
+
+    // spool server method
+    public static <T> void spoolSubProtoServer(Class<T> myclass, int port)
+    {
+       if(subServers.containsKey(myclass))
+       {
+            throw new IllegalStateException("Server instance for type already exists" + myclass.getSimpleName());
+       } 
+
+       // if not, we're good, add the instance to the spool pool lmao
+       ProtoServer<T> server = new ProtoServer<>(myclass, port);
+       subServers.put(myclass, server);
+
+       System.out.println("Successful, server for instance: " + myclass.getSimpleName() + " created.");
+    }
+
+    // get server from ConcurrentHashmap method
+    @SuppressWarnings("unchecked")
+    public static <T> ProtoServer<T> getSubServer(Class<T> myclass)
+    {
+        return (ProtoServer<T>) subServers.get(myclass);
+    }
+
+
+
+
     // So in essence, while true keep accepting and handling clients
+    // TODO: chnage name to start ?
     public void recieve() throws IOException, ClassNotFoundException
     {
         while (true) {
@@ -226,18 +260,9 @@ public class ProtoServer <T>{
 
     public Protocol handleRequest(Protocol msg)
     {
+        
         // TODO: handle GET, POST, UPDATE and DELETE
         // This is finally when we consider MetaData
-
-        // switch (msg.getPacket().getMetaData().geCommProtocol()) {
-            
-        //     case Protocol.Packet.MetaData.CommProtocol.GET:
-        //         // do something
-        //         break;
-        
-        //     default:
-        //         break;
-        // }
 
         
         Optional<Protocol.Packet.MetaData.CommProtocol> opt = msg.getPacket().getMetaData().geCommProtocol();
@@ -252,6 +277,8 @@ public class ProtoServer <T>{
         {
             Protocol.Packet.MetaData.CommProtocol protocol = opt.get();
 
+            // At this point i think its appropriate to begin spooling sub server objects 
+            // As well as managing their object pool
             switch(protocol)
             {
                 case GET:
@@ -328,5 +355,22 @@ public class ProtoServer <T>{
 
     }
 }
+
+/*
+     * Example Syntax
+     * 
+     *  public static void main(String[] args) throws IOException {
+            SessionFactory sf = SessionFactoryProvider.provideSessionFactory();
+
+            ProtoServer<User> userServer = ProtoServer.spoolSubProtoServer(User.class, 9001);
+            userServer.bindToDatabase(new OrmDataProvider<>(sf, User.class));
+
+            ProtoServer<Product> productServer = ProtoServer.spoolSubProtoServer(Product.class, 9002);
+            productServer.bindToDatabase(new ListDataProvider<>(new ArrayList<>()));
+
+            new Thread(userServer::start).start();
+            new Thread(productServer::start).start();
+    }
+     */
 
    
