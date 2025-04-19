@@ -30,11 +30,12 @@ public class ProtoServer <T>{
         database.bindToDataBase(provider);
     }
 
+
     
     private ProtoServer(Class<T> modelClass, int port)
     {   
-        this.modelClass = modelClass;
         this.PORT = port;
+        this.modelClass = modelClass;
         try 
         {
             this.serverSocket = new ServerSocket(PORT);
@@ -79,7 +80,7 @@ public class ProtoServer <T>{
 
     // So in essence, while true keep accepting and handling clients
     // TODO: chnage name to start ?
-    public void recieve() throws IOException, ClassNotFoundException
+    public static void recieve() throws IOException, ClassNotFoundException
     {
         while (true) {
             Socket client = serverSocket.accept();
@@ -97,7 +98,7 @@ public class ProtoServer <T>{
 
 
     // run this on a thread Note this should run only once
-    public void handleClient(Socket socket)
+    public static void handleClient(Socket socket)
     {
         // NETWORK HANDSHAKE
         try(
@@ -189,7 +190,7 @@ public class ProtoServer <T>{
 
     }
 
-    private void bootClient(Socket socket, ObjectOutputStream out, String reason)
+    private static void bootClient(Socket socket, ObjectOutputStream out, String reason)
     {
         try
         {
@@ -213,7 +214,7 @@ public class ProtoServer <T>{
 
     // this is when they send a CONN_CONF and were cool with them
     // return a CONN_OK
-    public void handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
+    public static void handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
     {
         // Handles client message and does what he's asked to do
         // TODO: this will be like an entry into another set of utils
@@ -258,7 +259,7 @@ public class ProtoServer <T>{
         socket.close();
     }
 
-    public Protocol handleRequest(Protocol msg)
+    public static Protocol handleRequest(Protocol msg)
     {
         
         // TODO: handle GET, POST, UPDATE and DELETE
@@ -356,6 +357,11 @@ public class ProtoServer <T>{
     }
 }
 
+
+// The whole idea is that there is only one server
+// However, that server has subservers that handle individual ORMS
+// so the methods not marked as static are for them
+// the methods marked as static are for the main server
 /*
      * Example Syntax
      * 
