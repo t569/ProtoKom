@@ -89,9 +89,13 @@ public class Protocol implements Serializable{
                 POST,
                 UPDATE,
                 DELETE,
+                RESPONSE_OK,
+                RESPONSE_ERR,       // Baba no time to dey do error codes
             }
             private CommProtocol comm_protocol;
             private Object payload;
+
+            // Four Constructors is crazy, i know!!!!!!
             public MetaData()
             {
                 // TODO: what should be here?
@@ -105,12 +109,24 @@ public class Protocol implements Serializable{
                 this.payload = payload;
             }
 
+            public MetaData(CommProtocol comm_protocol)
+            {
+                this.comm_protocol = comm_protocol;
+                this.payload = null;
+            }
+
+            public MetaData(Object payload)
+            {
+                this.comm_protocol = null;
+                this.payload = payload;
+            }
+
 
             // Please note that this can return null so we use optional
             // we have to known the type of the payload we are fetching
-            public <T> Optional<T> getPayload(Class <T> type)
+            public  Optional<Object> getPayload()
             {   
-                return Optional.ofNullable(type.cast(payload));
+                return Optional.ofNullable(payload);
             }
 
             public Optional<CommProtocol> geCommProtocol()
