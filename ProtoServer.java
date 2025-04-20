@@ -7,35 +7,46 @@ import java.io.*;
  * Recieve all incoming connections
  * 
  */
-public class ProtoServer <T>{
-    private final Class<T> modelClass;
+public class ProtoServer{
     private int PORT;
     private ServerSocket serverSocket;
     private static String name = "localhost";
     private static final ConcurrentHashMap<String, Boolean> ackedClients = new ConcurrentHashMap();
-    private static final ConcurrentHashMap<Class<?>, ProtoServer<?>> subServers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Class<?>, QueryHandler<?>> queries = new ConcurrentHashMap<>();
 
+    /*
+     * MODIFICATION: 
+     * The modification Creates a new sub class called BindHandler that handles different data and is what is actually bound to the database
+     *
+     * 
+     */
 
-    // the database
-    private DataBindings<T> database = new DataBindings<>();
+     private class QueryHandler<T>
+     {
+        private DataBindings<T> query = new DataBindings<>();
+        public QueryHandler(Class <T> modelClass)
+        {
 
+        }
 
-    // create a static class instance that handles all the classes
+        // bind the bindhandler query object to a Data provider
+        public void bindToDataBase(DataProvider<T> provider)
+        {
+            query.bindToDataBase(provider);
+        }
+     }
     
-    // bind the database to a database structure
-
     // remember to actually write the DataProvider
-    public void bindToDataBase(DataProvider<T> provider)
-    {
-        database.bindToDataBase(provider);
-    }
+    // public void bindToDataBase(DataProvider<T> provider)
+    // {
+    //     database.bindToDataBase(provider);
+    // }
 
 
     
-    private ProtoServer(Class<T> modelClass, int port)
+    public ProtoServer(int port)
     {   
         this.PORT = port;
-        this.modelClass = modelClass;
         try 
         {
             this.serverSocket = new ServerSocket(PORT);
@@ -54,25 +65,30 @@ public class ProtoServer <T>{
 
 
     // spool server method
-    public static <T> void spoolSubProtoServer(Class<T> myclass, int port)
+    public <T> void spoolQuery(Class<T> myclass, DataProvider<T> provider)
     {
-       if(subServers.containsKey(myclass))
+       if(queries.containsKey(myclass))
        {
             throw new IllegalStateException("Server instance for type already exists" + myclass.getSimpleName());
        } 
 
        // if not, we're good, add the instance to the spool pool lmao
-       ProtoServer<T> server = new ProtoServer<>(myclass, port);
-       subServers.put(myclass, server);
+       /*
+        * Bind it to the provider first
+        * Then add it to the hashmap
+        */
+       QueryHandler<T> query = new QueryHandler<>(myclass);
+       query.bindToDataBase(provider);
+       queries.put(myclass, query);
 
        System.out.println("Successful, server for instance: " + myclass.getSimpleName() + " created.");
     }
 
     // get server from ConcurrentHashmap method
     @SuppressWarnings("unchecked")
-    public static <T> ProtoServer<T> getSubServer(Class<T> myclass)
+    public <T> QueryHandler<T> getQuery(Class<T> myclass)
     {
-        return (ProtoServer<T>) subServers.get(myclass);
+        return (QueryHandler<T>) queries.get(myclass);
     }
 
 
@@ -80,7 +96,7 @@ public class ProtoServer <T>{
 
     // So in essence, while true keep accepting and handling clients
     // TODO: chnage name to start ?
-    public static void recieve() throws IOException, ClassNotFoundException
+    public void recieve() throws IOException, ClassNotFoundException
     {
         while (true) {
             Socket client = serverSocket.accept();
@@ -98,7 +114,7 @@ public class ProtoServer <T>{
 
 
     // run this on a thread Note this should run only once
-    public static void handleClient(Socket socket)
+    public void handleClient(Socket socket)
     {
         // NETWORK HANDSHAKE
         try(
@@ -190,7 +206,7 @@ public class ProtoServer <T>{
 
     }
 
-    private static void bootClient(Socket socket, ObjectOutputStream out, String reason)
+    private void bootClient(Socket socket, ObjectOutputStream out, String reason)
     {
         try
         {
@@ -214,7 +230,7 @@ public class ProtoServer <T>{
 
     // this is when they send a CONN_CONF and were cool with them
     // return a CONN_OK
-    public static void handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
+    public void handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
     {
         // Handles client message and does what he's asked to do
         // TODO: this will be like an entry into another set of utils
@@ -259,7 +275,7 @@ public class ProtoServer <T>{
         socket.close();
     }
 
-    public static Protocol handleRequest(Protocol msg)
+    public Protocol handleRequest(Protocol msg)
     {
         
         // TODO: handle GET, POST, UPDATE and DELETE
@@ -276,30 +292,31 @@ public class ProtoServer <T>{
         // if we actually have some metadata
         if(opt.isPresent())
         {
+            // get the protocol
             Protocol.Packet.MetaData.CommProtocol protocol = opt.get();
 
-            // At this point i think its appropriate to begin spooling sub server objects 
-            // As well as managing their object pool
+            // get the metadata payload and pass it into the functions
+            Object payload = msg.getPacket().getMetaData().getPayload();
             switch(protocol)
             {
                 case GET:
                     // do something
-                    returnProtocol = handleGet(msg);
+                    returnProtocol = handleGet(payload, msg.getPacket().getSender());
                     break;
 
                 case POST:
                     // do something
-                    returnProtocol = handlePost(msg);
+                    returnProtocol = handlePost(payload, msg.getPacket().getSender());
                     break;
 
                 case UPDATE:
                     // do something
-                    returnProtocol = handleUpdate(msg);
+                    returnProtocol = handleUpdate(payload, msg.getPacket().getSender());
                     break;
 
                 case DELETE:
                     // do something
-                    returnProtocol = handleDelete(msg);
+                    returnProtocol = handleDelete(payload, msg.getPacket().getSender());
                     break;
 
                 default:
@@ -334,16 +351,49 @@ public class ProtoServer <T>{
 
     }
 
-
+    // TODO:
+            // search the queries for the type of the payload
+            // pass into into the handleXyz(...) method arguments
     // TODO: parse metaData, search the DataBase and return a Protocol response
-    public Protocol handleGet(Protocol msg)
+    public Protocol handleGet(Object metadata, String to_whom)
     {
-
+        if(queries.containsKey(metadata.getClass()))
+        {
+            QueryHandler<?> query_handler = queries.get(metadata.getClass());
+            
+            // just init this lmao
+            Object query;
+            try 
+            {
+                query = query_handler.query.get(metadata);
+                Protocol response = new Protocol(Status.CONN_OK,
+                                            new Protocol.Packet(
+                                                name,
+                                                to_whom,
+                                                "Request recieved, GET Made",
+                                                new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, query)
+                                            )
+                                    );
+                return response;
+            }
+            catch(Exception e)
+            {
+                e.printStackTrace();
+            }
+        }
+        return new Protocol(Status.CONN_OK,
+                                    new Protocol.Packet(
+                                        name,
+                                        to_whom,
+                                        "Request recieved, Invalid request",
+                                        new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)
+                                    )
+    );
     }
 
-    public Protocol handlePost(Protocol msg)
+    public Protocol handlePost(Object metadata, String to_whom)
     {
-
+       
     } 
 
     public Protocol handleUpdate(Protocol msg)
