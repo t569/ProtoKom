@@ -3,6 +3,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import java.io.*;
+import java.lang.classfile.ClassFile.Option;
 /*
  * Recieve all incoming connections
  * 
@@ -294,29 +295,28 @@ public class ProtoServer{
         {
             // get the protocol
             Protocol.Packet.MetaData.CommProtocol protocol = opt.get();
+            Object payload = msg.getPacket().getMetaData().getPayload(); 
 
-            // get the metadata payload and pass it into the functions
-            Object payload = msg.getPacket().getMetaData().getPayload();
             switch(protocol)
             {
                 case GET:
                     // do something
-                    returnProtocol = handleGet(payload, msg.getPacket().getSender());
+                    returnProtocol = handleGet(msg);
                     break;
 
                 case POST:
                     // do something
-                    returnProtocol = handlePost(payload, msg.getPacket().getSender());
+                    returnProtocol = handlePost(msg);
                     break;
 
                 case UPDATE:
                     // do something
-                    returnProtocol = handleUpdate(payload, msg.getPacket().getSender());
+                    returnProtocol = handleUpdate(msg);
                     break;
 
                 case DELETE:
                     // do something
-                    returnProtocol = handleDelete(payload, msg.getPacket().getSender());
+                    returnProtocol = handleDelete(msg);
                     break;
 
                 default:
@@ -355,57 +355,146 @@ public class ProtoServer{
             // search the queries for the type of the payload
             // pass into into the handleXyz(...) method arguments
     // TODO: parse metaData, search the DataBase and return a Protocol response
-    public Protocol handleGet(Object metadata, String to_whom)
+
+
+    public <T> Protocol handleGet(Protocol msg)
     {
-        if(queries.containsKey(metadata.getClass()))
+        String clientID = msg.getPacket().getReciever();
+        Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
+
+
+        if(!payload.isPresent())
         {
-            QueryHandler<?> query_handler = queries.get(metadata.getClass());
-            
-            // just init this lmao
-            Object query;
-            try 
-            {
-                query = query_handler.query.get(metadata);
-                Protocol response = new Protocol(Status.CONN_OK,
-                                            new Protocol.Packet(
-                                                name,
-                                                to_whom,
-                                                "Request recieved, GET Made",
-                                                new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, query)
-                                            )
-                                    );
-                return response;
-            }
-            catch(Exception e)
-            {
-                e.printStackTrace();
-            }
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
         }
-        return new Protocol(Status.CONN_OK,
-                                    new Protocol.Packet(
-                                        name,
-                                        to_whom,
-                                        "Request recieved, Invalid request",
-                                        new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)
-                                    )
-    );
+
+        Object object_id_to_get = payload.get();
+
+        // TODO: handle the cast failure
+        QueryHandler<T> handler = getQuery((Class<T>) object_id_to_get.getClass());
+
+        if(handler == null)
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));  
+        }
+
+        try 
+       {
+            T object_to_get = handler.query.get(object_id_to_get);
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "GET: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
+       }
+       catch(Exception e)
+       {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: " + e.getMessage(),new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+       }
     }
 
-    public Protocol handlePost(Object metadata, String to_whom)
+
+    public <T> Protocol handlePost(Protocol msg)
     {
-       
+        String clientID = msg.getPacket().getReciever();
+        Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
+
+
+        if(!payload.isPresent())
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(
+            name, clientID, "GET failed: No ID provided", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
+
+        Object object_to_post = payload.get();
+
+
+       // TODO: handle when this cast fails
+       QueryHandler<T> handler = getQuery((Class<T>) object_to_post.getClass());
+
+       if(handler == null)
+       {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "POST failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+       }
+
+
+       try 
+       {
+            handler.query.post((T) object_to_post);
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "POST: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
+       }
+       catch(Exception e)
+       {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "POST failed: " + e.getMessage(),new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+       }
     } 
 
-    public Protocol handleUpdate(Protocol msg)
+    public <T> Protocol handleUpdate(Protocol msg)
     {
+        String clientID = msg.getPacket().getReciever();
+        Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
+
+        if(!payload.isPresent())
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
+
+        // TODO: handle when type cast fails
+        Object object_to_update = payload.get();
+        QueryHandler<T> handler = getQuery((Class<T>) object_to_update.getClass());
+
+        if(handler == null){
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
+
+        try
+        {
+            handler.query.update((T) object_to_update);
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
+        }
+        catch(Exception e)
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE failed: " + e.getMessage(), new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
 
     }
 
-    public Protocol handleDelete(Protocol msg)
+    public <T> Protocol handleDelete(Protocol msg)
     {
+        String clientID = msg.getPacket().getReciever();
+        Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
 
+        if(!payload.isPresent())
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
+
+        Object object_to_delete = payload.get();
+        QueryHandler<T> handler = getQuery((Class<T>) object_to_delete.getClass());
+
+        if(handler == null)
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
+
+        try 
+        {   
+            // TODO: handle when type casting fails
+            handler.query.delete((T) object_to_delete);
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
+        }
+        catch(Exception e)
+        {
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: " + e.getMessage(), new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+        }
     }
 }
+
+// TODO: rework get and delete, something wrong with them
+
+// we are supposed to use an id or index to get objects of type T
+
+// and delete should have both delete for id or index and for object of type T
+
+
+
+
 
 
 // The whole idea is that there is only one server
@@ -413,20 +502,7 @@ public class ProtoServer{
 // so the methods not marked as static are for them
 // the methods marked as static are for the main server
 /*
-     * Example Syntax
-     * 
-     *  public static void main(String[] args) throws IOException {
-            SessionFactory sf = SessionFactoryProvider.provideSessionFactory();
 
-            ProtoServer<User> userServer = ProtoServer.spoolSubProtoServer(User.class, 9001);
-            userServer.bindToDatabase(new OrmDataProvider<>(sf, User.class));
-
-            ProtoServer<Product> productServer = ProtoServer.spoolSubProtoServer(Product.class, 9002);
-            productServer.bindToDatabase(new ListDataProvider<>(new ArrayList<>()));
-
-            new Thread(userServer::start).start();
-            new Thread(productServer::start).start();
-    }
      */
 
    

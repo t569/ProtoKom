@@ -11,10 +11,10 @@ public class DataBindings <T>{
     }
 
     /* now we have to make sure we cant do anthing stupid */
-    public T get(Object id) throws Exception
+    public T get(Object obj) throws Exception
     {
         ensureProvider();
-        return provider.get(id);
+        return provider.get(obj);
     }
 
     public void post(T entity) throws Exception
@@ -29,10 +29,10 @@ public class DataBindings <T>{
         provider.update(entity);
     }
 
-    public void delete(Object id) throws Exception
+    public void delete(T obj) throws Exception
     {
         ensureProvider();
-        provider.delete(id);
+        provider.delete(obj);
     }
 
     public void bindToDataBase(DataProvider<T> provider)
