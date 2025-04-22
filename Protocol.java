@@ -95,12 +95,28 @@ public class Protocol implements Serializable{
             private CommProtocol comm_protocol;
             private Object payload;
 
-            // Four Constructors is crazy, i know!!!!!!
+            // this is to handle the get and delete handlers.
+            // Basic idea is just to have an optional string object which represents a key
+            // this optional, MUST be something if the protocol is a GET or DELETE based on id
+            private Optional<String> typeKey;
+
+            // 5 Constructors is crazy, i know!!!!!!
+
+
+            // TODO: handle all protocol cases for both client and server
             public MetaData()
             {
-                // TODO: what should be here?
+
                 this.comm_protocol = null;  // useful during the handshake phase
                 this.payload = null;
+                this.typeKey = Optional.empty();
+            }
+
+            public MetaData(CommProtocol comm_protocol, Object payload, String typeKey)
+            {
+                this.comm_protocol = comm_protocol;
+                this.payload = payload;
+                this.typeKey = Optional.ofNullable(typeKey);
             }
 
             public MetaData(CommProtocol comm_protocol, Object payload)
@@ -108,6 +124,7 @@ public class Protocol implements Serializable{
                 this.comm_protocol = comm_protocol;
                 this.payload = payload;
             }
+
 
             public MetaData(CommProtocol comm_protocol)
             {
@@ -121,7 +138,6 @@ public class Protocol implements Serializable{
                 this.payload = payload;
             }
 
-
             // Please note that this can return null so we use optional
             // we have to known the type of the payload we are fetching
             public  Optional<Object> getPayload()
@@ -129,9 +145,14 @@ public class Protocol implements Serializable{
                 return Optional.ofNullable(payload);
             }
 
-            public Optional<CommProtocol> geCommProtocol()
+            public Optional<CommProtocol> getCommProtocol()
             {
                 return Optional.ofNullable(comm_protocol);
+            }
+
+            public Optional<String> getKey()
+            {
+                return typeKey;
             }
 
         }

@@ -92,11 +92,34 @@ public class ProtoServer{
         return (QueryHandler<T>) queries.get(myclass);
     }
 
+    public boolean matchesTypeKey(String typekey, Class<?> modelClass)
+    {
+        return modelClass.getSimpleName().equalsIgnoreCase(typekey);
+    }
+
+    public <T> QueryHandler<T> findQueryHandlerByTypeKey(String typekey, ConcurrentHashMap<Class<?>, QueryHandler<?>>queries)
+    {
+        for(Class<?> modelClass: queries.keySet())
+        {
+            // this makes sure we ignore case sensitivity e.g. User and USER works
+            // TODO: check if this is a bad idea
+
+            // TODO: handle the casting ambiguities
+            if(modelClass.getSimpleName().equalsIgnoreCase(typekey))
+            {
+                return (QueryHandler<T>) queries.get(modelClass);
+            }
+        }
+
+        // nothing found
+        return null;
+    }
 
 
 
     // So in essence, while true keep accepting and handling clients
     // TODO: chnage name to start ?
+    // TODO: create a thread pool to prevent DDOS attacks, check out Nnnanna's message
     public void recieve() throws IOException, ClassNotFoundException
     {
         while (true) {
@@ -357,39 +380,93 @@ public class ProtoServer{
     // TODO: parse metaData, search the DataBase and return a Protocol response
 
 
+    // public <T> Protocol handleGet(Protocol msg)
+    // {
+    //     String clientID = msg.getPacket().getReciever();
+    //     Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
+
+
+    //     if(!payload.isPresent())
+    //     {
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+    //     }
+
+    //     // this works for getting a particular Object
+    //     Object object_id_to_get = payload.get();
+
+    //     // TODO: handle the cast failure
+    //     QueryHandler<T> handler = getQuery((Class<T>) object_id_to_get.getClass());
+
+    //     if(handler == null)
+    //     {
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));  
+    //     }
+
+    //     try 
+    //    {
+    //         T object_to_get = handler.query.get(object_id_to_get);
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "GET: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
+    //    }
+    //    catch(Exception e)
+    //    {
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: " + e.getMessage(),new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+    //    }
+    // }
+
+
+    // Note: this implementation works with Object id objects, so searching by id or a field
     public <T> Protocol handleGet(Protocol msg)
     {
         String clientID = msg.getPacket().getReciever();
+
+        // payload is just and Object. In this case a String or an id
         Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
 
+        // get the actual key that we're searching
+        Optional<String> typekey = msg.getPacket().getMetaData().getKey();
 
-        if(!payload.isPresent())
+        // check if the key exists and error if it does not;
+        // Note: key should only exist for GET and DELETE methods
+
+        QueryHandler<T> handler;
+        if(typekey.isPresent())
         {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            // now search query to see if we get a match on type key
+             handler = findQueryHandlerByTypeKey(typekey.get(), queries);
+
+            // we dont have a handler for this type specified
+            if(handler == null)
+            {
+                return new Protocol(Status.CONN_OK,new Protocol.Packet(name, clientID, "GET failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            }
+
+            // now check if we actually have a payload
+            if(!payload.isPresent())
+            {
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            }
+
+            Object object_id_to_get = payload.get();
+            try 
+            {
+                T object_to_get = handler.query.get(object_id_to_get);
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "GET: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
+
+            }
+            catch(Exception e)
+            {
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: " + e.getMessage(),new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            }
         }
 
-        Object object_id_to_get = payload.get();
-
-        // TODO: handle the cast failure
-        QueryHandler<T> handler = getQuery((Class<T>) object_id_to_get.getClass());
-
-        if(handler == null)
+        else
         {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));  
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: No supplied type Key",new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR))); 
         }
 
-        try 
-       {
-            T object_to_get = handler.query.get(object_id_to_get);
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "GET: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
-       }
-       catch(Exception e)
-       {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "GET failed: " + e.getMessage(),new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
-       }
+        
+
     }
-
-
     public <T> Protocol handlePost(Protocol msg)
     {
         String clientID = msg.getPacket().getReciever();
