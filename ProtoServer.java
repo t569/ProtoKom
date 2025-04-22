@@ -12,7 +12,7 @@ public class ProtoServer{
     private int PORT;
     private ServerSocket serverSocket;
     private static String name = "localhost";
-    private static final ConcurrentHashMap<String, Boolean> ackedClients = new ConcurrentHashMap();
+    private static final ConcurrentHashMap<String, Boolean> ackedClients = new ConcurrentHashMap<String, Boolean>();
     private final ConcurrentHashMap<Class<?>, QueryHandler<?>> queries = new ConcurrentHashMap<>();
 
     /*
@@ -34,6 +34,11 @@ public class ProtoServer{
         public void bindToDataBase(DataProvider<T> provider)
         {
             query.bindToDataBase(provider);
+        }
+
+        public DataBindings<T> getQuery()
+        {
+            return this.query;
         }
      }
     
@@ -120,7 +125,7 @@ public class ProtoServer{
     // So in essence, while true keep accepting and handling clients
     // TODO: chnage name to start ?
     // TODO: create a thread pool to prevent DDOS attacks, check out Nnnanna's message
-    public void recieve() throws IOException, ClassNotFoundException
+    public void receive() throws IOException, ClassNotFoundException
     {
         while (true) {
             Socket client = serverSocket.accept();
@@ -376,7 +381,7 @@ public class ProtoServer{
     // Note: this implementation works with Object id objects, so searching by id or a field
     public <T> Protocol handleGet(Protocol msg)
     {
-        String clientID = msg.getPacket().getReciever();
+        String clientID = msg.getPacket().getReceiver();
 
         // payload is just and Object. In this case a String or an id
         Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
@@ -408,7 +413,7 @@ public class ProtoServer{
             Object object_id_to_get = payload.get();
             try 
             {
-                T object_to_get = handler.query.get(object_id_to_get);
+                T object_to_get = handler.getQuery().get(object_id_to_get);
                 return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "GET: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
 
             }
@@ -428,14 +433,14 @@ public class ProtoServer{
     }
     public <T> Protocol handlePost(Protocol msg)
     {
-        String clientID = msg.getPacket().getReciever();
+        String clientID = msg.getPacket().getReceiver();
         Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
 
 
         if(!payload.isPresent())
         {
             return new Protocol(Status.CONN_OK, new Protocol.Packet(
-            name, clientID, "GET failed: No ID provided", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            name, clientID, "POST failed: No payload provided", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
         }
 
         Object object_to_post = payload.get();
@@ -452,7 +457,7 @@ public class ProtoServer{
 
        try 
        {
-            handler.query.post((T) object_to_post);
+            handler.getQuery().post((T) object_to_post);
             return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "POST: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
        }
        catch(Exception e)
@@ -463,12 +468,12 @@ public class ProtoServer{
 
     public <T> Protocol handleUpdate(Protocol msg)
     {
-        String clientID = msg.getPacket().getReciever();
+        String clientID = msg.getPacket().getReceiver();
         Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
 
         if(!payload.isPresent())
         {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE failed: No payload provided", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
         }
 
         // TODO: handle when type cast fails
@@ -481,7 +486,7 @@ public class ProtoServer{
 
         try
         {
-            handler.query.update((T) object_to_update);
+            handler.getQuery().update((T) object_to_update);
             return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "UPDATE success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
         }
         catch(Exception e)
@@ -523,7 +528,7 @@ public class ProtoServer{
 
     public <T> Protocol handleDelete(Protocol msg)
     {
-        String clientID = msg.getPacket().getReciever();
+        String clientID = msg.getPacket().getReceiver();
 
         // payload is just and Object. In this case a String or an id
         Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
@@ -555,8 +560,8 @@ public class ProtoServer{
             Object object_id_to_get = payload.get();
             try 
             {
-                T object_to_get = handler.query.get(object_id_to_get);
-                return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "DELETE: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
+                handler.getQuery().delete(object_id_to_get);
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "DELETE: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
 
             }
             catch(Exception e)
@@ -569,9 +574,6 @@ public class ProtoServer{
         {
             return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No supplied type Key",new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR))); 
         }
-
-        
-
     }
 }
 

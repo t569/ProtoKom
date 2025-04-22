@@ -7,5 +7,5 @@ public interface DataProvider<T> {
     T get(Object obj) throws Exception;
     void post(T entity) throws Exception;
     void update(T entity) throws Exception;
-    void delete(T obj) throws Exception;
+    void delete(Object obj) throws Exception;
 }

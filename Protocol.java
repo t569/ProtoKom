@@ -44,16 +44,16 @@ public class Protocol implements Serializable{
     {
         // Now this class has some extra stuff
 
-        // The sender, reciever, text amd metadata
+        // The sender, receiver, text amd metadata
         private String sender;
-        private String reciever;
+        private String receiver;
         private String text;
         private MetaData metadata;
 
-        public Packet(String sender, String reciever, String text, MetaData metadata)
+        public Packet(String sender, String receiver, String text, MetaData metadata)
         {
             this.sender = sender;
-            this.reciever = reciever;
+            this.receiver = receiver;
             this.text = text;
             this.metadata = metadata;
         }
@@ -63,9 +63,9 @@ public class Protocol implements Serializable{
             return this.sender;
         }
 
-        public String getReciever()
+        public String getReceiver()
         {
-            return this.reciever;
+            return this.receiver;
         }
 
         public String getText()
@@ -80,7 +80,7 @@ public class Protocol implements Serializable{
 
 
         // This has the commands, still thinking about it
-        // Basically tells the reciever what to do with the message
+        // Basically tells the receiver what to do with the message
         public static class MetaData implements Serializable
         {
             enum CommProtocol
@@ -123,6 +123,7 @@ public class Protocol implements Serializable{
             {
                 this.comm_protocol = comm_protocol;
                 this.payload = payload;
+                this.typeKey = Optional.empty();
             }
 
 
@@ -130,12 +131,14 @@ public class Protocol implements Serializable{
             {
                 this.comm_protocol = comm_protocol;
                 this.payload = null;
+                this.typeKey = Optional.empty();
             }
 
             public MetaData(Object payload)
             {
                 this.comm_protocol = null;
                 this.payload = payload;
+                this.typeKey = Optional.empty();
             }
 
             // Please note that this can return null so we use optional

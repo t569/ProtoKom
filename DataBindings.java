@@ -29,7 +29,7 @@ public class DataBindings <T>{
         provider.update(entity);
     }
 
-    public void delete(T obj) throws Exception
+    public void delete(Object obj) throws Exception
     {
         ensureProvider();
         provider.delete(obj);
