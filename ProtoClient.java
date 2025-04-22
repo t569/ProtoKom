@@ -104,6 +104,12 @@ public class ProtoClient {
     {
         out.writeObject(req);
         out.flush();
+
+        if(req.getStatus() == Status.CONN_DISCONNECT)
+        {
+            // close the socket and end connection; this is done after sending the request
+            this.socket.close();
+        }
     }
 
 
