@@ -306,7 +306,7 @@ public class ProtoServer{
         // This is finally when we consider MetaData
 
         
-        Optional<Protocol.Packet.MetaData.CommProtocol> opt = msg.getPacket().getMetaData().geCommProtocol();
+        Optional<Protocol.Packet.MetaData.CommProtocol> opt = msg.getPacket().getMetaData().getCommProtocol();
 
 
         // what we will return to the client
@@ -318,7 +318,6 @@ public class ProtoServer{
         {
             // get the protocol
             Protocol.Packet.MetaData.CommProtocol protocol = opt.get();
-            Object payload = msg.getPacket().getMetaData().getPayload(); 
 
             switch(protocol)
             {
@@ -373,7 +372,7 @@ public class ProtoServer{
         
 
     }
-    
+
     // Note: this implementation works with Object id objects, so searching by id or a field
     public <T> Protocol handleGet(Protocol msg)
     {
@@ -492,34 +491,87 @@ public class ProtoServer{
 
     }
 
+    // public <T> Protocol handleDelete(Protocol msg)
+    // {
+    //     String clientID = msg.getPacket().getReciever();
+    //     Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
+
+    //     if(!payload.isPresent())
+    //     {
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+    //     }
+
+    //     Object object_to_delete = payload.get();
+    //     QueryHandler<T> handler = getQuery((Class<T>) object_to_delete.getClass());
+
+    //     if(handler == null)
+    //     {
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+    //     }
+
+    //     try 
+    //     {   
+    //         // TODO: handle when type casting fails
+    //         handler.query.delete((T) object_to_delete);
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
+    //     }
+    //     catch(Exception e)
+    //     {
+    //         return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: " + e.getMessage(), new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+    //     }
+    // }
+
     public <T> Protocol handleDelete(Protocol msg)
     {
         String clientID = msg.getPacket().getReciever();
+
+        // payload is just and Object. In this case a String or an id
         Optional<Object> payload = msg.getPacket().getMetaData().getPayload();
 
-        if(!payload.isPresent())
+        // get the actual key that we're searching
+        Optional<String> typekey = msg.getPacket().getMetaData().getKey();
+
+        // check if the key exists and error if it does not;
+        // Note: key should only exist for GET and DELETE methods
+
+        QueryHandler<T> handler;
+        if(typekey.isPresent())
         {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            // now search query to see if we get a match on type key
+             handler = findQueryHandlerByTypeKey(typekey.get(), queries);
+
+            // we dont have a handler for this type specified
+            if(handler == null)
+            {
+                return new Protocol(Status.CONN_OK,new Protocol.Packet(name, clientID, "DELETE failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            }
+
+            // now check if we actually have a payload
+            if(!payload.isPresent())
+            {
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No payload", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            }
+
+            Object object_id_to_get = payload.get();
+            try 
+            {
+                T object_to_get = handler.query.get(object_id_to_get);
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name,clientID, "DELETE: success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK, object_to_get)));
+
+            }
+            catch(Exception e)
+            {
+                return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: " + e.getMessage(),new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            }
         }
 
-        Object object_to_delete = payload.get();
-        QueryHandler<T> handler = getQuery((Class<T>) object_to_delete.getClass());
-
-        if(handler == null)
+        else
         {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No handler for type", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
+            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: No supplied type Key",new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR))); 
         }
 
-        try 
-        {   
-            // TODO: handle when type casting fails
-            handler.query.delete((T) object_to_delete);
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE success", new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_OK)));
-        }
-        catch(Exception e)
-        {
-            return new Protocol(Status.CONN_OK, new Protocol.Packet(name, clientID, "DELETE failed: " + e.getMessage(), new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)));
-        }
+        
+
     }
 }
 
