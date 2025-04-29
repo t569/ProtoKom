@@ -1,7 +1,12 @@
 import java.net.*;
 import java.util.Optional;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
+import routines.Echo;
 import java.io.*;
 /*
  * Recieve all incoming connections
@@ -13,6 +18,12 @@ public class ProtoServer{
     private static String name = "localhost";
     private static final ConcurrentHashMap<String, Boolean> ackedClients = new ConcurrentHashMap<String, Boolean>();
     private final ConcurrentHashMap<Class<?>, QueryHandler<?>> queries = new ConcurrentHashMap<>();
+    private final int maxThreads = 10;
+    private final int maxQueue = 20;
+    private Echo server_parrot = new Echo(name);
+
+    // thread pool for spoolign connections
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(maxThreads, maxThreads,0L, TimeUnit.MILLISECONDS,  new ArrayBlockingQueue<>(maxQueue), new ThreadPoolExecutor.CallerRunsPolicy());
 
     /*
      * MODIFICATION: 
@@ -20,33 +31,6 @@ public class ProtoServer{
      *
      * 
      */
-
-     private class QueryHandler<T>
-     {
-        private DataBindings<T> query = new DataBindings<>();
-        public QueryHandler(Class <T> modelClass)
-        {
-
-        }
-
-        // bind the bindhandler query object to a Data provider
-        public void bindToDataBase(DataProvider<T> provider)
-        {
-            query.bindToDataBase(provider);
-        }
-
-        public DataBindings<T> getQuery()
-        {
-            return this.query;
-        }
-     }
-    
-    // remember to actually write the DataProvider
-    // public void bindToDataBase(DataProvider<T> provider)
-    // {
-    //     database.bindToDataBase(provider);
-    // }
-
 
     
     public ProtoServer(int port)
@@ -67,182 +51,168 @@ public class ProtoServer{
     // Until the client themself close the connection. 
 
 
-
-
-    // spool server method
-    public <T> void spoolQuery(Class<T> myclass, DataProvider<T> provider)
-    {
-       if(queries.containsKey(myclass))
-       {
-            throw new IllegalStateException("Server instance for type already exists" + myclass.getSimpleName());
-       } 
-
-       // if not, we're good, add the instance to the spool pool lmao
-       /*
-        * Bind it to the provider first
-        * Then add it to the hashmap
-        */
-       QueryHandler<T> query = new QueryHandler<>(myclass);
-       query.bindToDataBase(provider);
-       queries.put(myclass, query);
-
-       System.out.println("Successful, server for instance: " + myclass.getSimpleName() + " created.");
-    }
-
-    // get server from ConcurrentHashmap method
-    @SuppressWarnings("unchecked")
-    public <T> QueryHandler<T> getQuery(Class<T> myclass)
-    {
-        return (QueryHandler<T>) queries.get(myclass);
-    }
-
-    public boolean matchesTypeKey(String typekey, Class<?> modelClass)
-    {
-        return modelClass.getSimpleName().equalsIgnoreCase(typekey);
-    }
-
-    @SuppressWarnings("unchecked")
-    public <T> QueryHandler<T> findQueryHandlerByTypeKey(String typekey, ConcurrentHashMap<Class<?>, QueryHandler<?>>queries)
-    {
-        for(Class<?> modelClass: queries.keySet())
-        {
-            // this makes sure we ignore case sensitivity e.g. User and USER works
-            // TODO: check if this is a bad idea
-
-            // TODO: handle the casting ambiguities
-            if(modelClass.getSimpleName().equalsIgnoreCase(typekey))
-            {
-                return (QueryHandler<T>) queries.get(modelClass);
-            }
-        }
-
-        // nothing found
-        return null;
-    }
-
-
-
     // So in essence, while true keep accepting and handling clients
-    // TODO: chnage name to start ?
-    // TODO: create a thread pool to prevent DDOS attacks, check out Nnnanna's message
-    public void receive() throws IOException, ClassNotFoundException
+    public void start() throws IOException, ClassNotFoundException
     {
-        while (true) {
-            Socket client = serverSocket.accept();
-            new Thread(() -> handleClient(client)).start();
-            
-        }
+        // create a thread pool to handle all the threads
+        Thread acceptThread = new Thread(() -> {
+            server_parrot.log("Server listening on port: " + PORT);
+            while (true) {
+                try {
+                    Socket client = serverSocket.accept();
+                    executor.execute(() -> handleClient(client));
+                } catch (RejectedExecutionException rex) {
+                    System.err.println("Server overloaded, rejecting connection");
+                } catch (IOException io) {
+                    io.printStackTrace();
+                }
+            }
+        });
+        acceptThread.setDaemon(true);
+        acceptThread.start();
     }
+
+    
     // accept request from client
         // send a temp connection trigger
         // client recieves this and sends a CONN_REQ
         // server recieves this and sends a CONN_ACK
+
         // if client sends a CONN_CONF
         // server checks if they are part of server clients
         // if not boot the client
 
+    // TODO: use of CONN_CONF seems to be depreciated, meaning has changed
 
     // run this on a thread Note this should run only once
     public void handleClient(Socket socket)
     {
         // NETWORK HANDSHAKE
+
+        // under this model we will first 
         try(
             ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
             ObjectInputStream  in  = new ObjectInputStream(socket.getInputStream());
         )
         {
-            // 1. send temp connection trigger
-            out.writeObject(new Protocol(
-                Status.CONN_INIT_HANDSHAKE,
-                new Protocol.Packet(
-                    name,                                               /*sender*/
-                    socket.getInetAddress().toString(),               /*receiver*/ 
-                    "BEGIN HANDSHAKE",                              /*text*/     
-                    new Protocol.Packet.MetaData()
-                )
-            ));
-            out.flush();
+            // get the name of the client first
+            String clientId = (String) in.readObject();
 
-            // 2. check response type
-            Protocol req = (Protocol) in.readObject();
-            String clientId = req.getPacket().getSender();
-            if(req.getStatus() == Status.CONN_REQ)
+            // search the name in the acked clients
+            if(!ackedClients.contains(clientId))
             {
-                // To do, port logging here too
-                System.out.println("Connection request from " + clientId);
+                // handshake successful proceed
+                if(handshake(in, out, socket)){
+                ackedClients.put(clientId, Boolean.TRUE);
+                server_parrot.log("Adding "+ clientId+ " to acked clients");
 
-                // Search if in hashmap and add it there if it isnt
-                if(!ackedClients.containsKey(clientId))
-                {
-                    ackedClients.put(clientId, Boolean.TRUE);
+                // process requests in infinite loop until we break socket connection
+                protocolProcess(socket, in, out);
                 }
 
-                // 3. Send the CONN_ACK
+                else
+                {
+                    throw new Exception("HandShake failed: Abort");
+                }
+            }
+            else
+            {
+                // if it is, process request in an infinite loop until we break socket connection
+                protocolProcess(socket, in, out);
+            }
+            
+        }
+
+        // this is used to catch when protocolProcess fails
+        catch(Exception e)
+        {
+            server_parrot.log_err_with_ret(e);
+        }
+
+        // =socket closing happens when we break out from protocolProcess
+        
+
+    }
+        
+    
+    private boolean handshake(ObjectInputStream in, ObjectOutputStream out, Socket socket) throws IOException, ClassNotFoundException
+    {
+        
+         // 1. CONN_INIT_HANDSHAKE TRIGGER
+         out.writeObject(new Protocol(Status.CONN_INIT_HANDSHAKE,new Protocol.Packet(name,
+                            socket.getInetAddress().toString(),
+                             "BEGIN HANDSHAKE",
+                            new Protocol.Packet.MetaData())));
+        out.flush();
+
+
+        // 2. Check Response Type from the init sequence
+        Protocol req = (Protocol) in.readObject();
+        String clientId = req.getPacket().getSender();
+
+        // if they make a request, check if we known them and add them, else tell them we acknowledge them
+        if(req.getStatus() == Status.CONN_REQ)
+        {
+                server_parrot.log("Connection request from "+ clientId);
+
+                // 3. Send CONN_ACK
                 out.writeObject(new Protocol(
                 Status.CONN_ACK,
                 new Protocol.Packet(
                     name,                                   /*sender*/  
                     clientId,                              /*receiver*/ 
-                    "HANDSHAKE ACK",            /*text*/ 
+                    "HANDSHAKE ACK",                   /*text*/ 
                     new Protocol.Packet.MetaData()
-                )
-            ));
-            out.flush();
-            }
-
-            else 
-            {
-                // 4. HANDLE CONN_CONF
-                if(req.getStatus() == Status.CONN_CONF)
-                {
-                    // search the hashmap if not found boot client
-                    if(!ackedClients.containsKey(clientId))
-                    {
-                        bootClient(socket, out, "Unkown User");
-                    }
-                    else
-                    {
-                        // TODO: handle the message
-                        //  Note this should be an infinite loop until we have a close request from the client
-                        try 
-                        {
-                            handleClientProtocol(req, socket, in, out);
-
-                            // once it breaks return
-                            // socket is closed in the inner function
-                            return;
-                        } 
-                        catch(IOException | ClassNotFoundException e)
-                        {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-
-                else
-                {
-                    // boot client
-                    bootClient(socket, out, "Invalid request");
-                }
-            }
-
-
+                    )
+                ));
+                server_parrot.log("Connection Request Acknowledged: "+ clientId);
+                out.flush();
         }
-        catch(ClassNotFoundException | IOException e)
+
+        else 
         {
-            e.printStackTrace();
+                // they send a request as if we know them boot that nigga
+                bootClient(socket, out, "Unknown user");
+                return false;
         }
+
+
+        // the handshake was successful
+        return true;
+
+
 
     }
 
+    public void protocolProcess(Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException, Exception
+    {
+        while(true)
+        {
+            // while the protocol status is not closed, listen and handle any incoming message
+            // main loop
+            // incoming message
+            
+            Protocol msg = (Protocol) in.readObject();
+
+            // this only happens when we disconnect
+            if(!handleClientProtocol(msg, socket, in, out))
+            {
+                break;
+            }
+        }
+
+        // if we ever break we close the socket
+        socket.close();
+    }
+    
     private void bootClient(Socket socket, ObjectOutputStream out, String reason)
     {
         try
         {
-            System.out.println("Booting client" + reason);
-
+            // System.out.println("Booting client" + reason);
+            server_parrot.log("Booting client: " + socket.getInetAddress() + socket.getPort() +" Reason: " + reason);
             out.writeObject(new Protocol(
-                Status.CONN_ACK,
+                Status.CONN_BOOT,
                 new Protocol.Packet(
                     name,                                   /*sender*/  
                     socket.getInetAddress().toString(),                              /*receiver*/ 
@@ -253,55 +223,30 @@ public class ProtoServer{
             out.flush();
             socket.close();
         }
-        catch(IOException e) {}
+        catch(IOException e) {server_parrot.log_err_with_ret(e);}
     }
 
-
-    // this is when they send a CONN_CONF and were cool with them
-    // return a CONN_OK
-    public void handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
+    public boolean handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
     {
         // Handles client message and does what he's asked to do
         // TODO: this will be like an entry into another set of utils
 
         String clientId = protocol.getPacket().getSender();
 
-        // Confirm the full handshake
-        Protocol ok = new Protocol(Status.CONN_OK,
-                                    new Protocol.Packet(
-                                        name,
-                                         clientId,
-                                        "Connection established",
-                                         new Protocol.Packet.MetaData()
-                                    )
-                                );
+        Status st = protocol.getStatus();
 
-        out.writeObject(ok);
+        if(st == Status.CONN_DISCONNECT)
+        {
+            server_parrot.log("Client " + clientId + " disconnected");
+            return false;
+        }
+
+        Protocol response = handleRequest(protocol);
+        out.writeObject(response);
         out.flush();
 
 
-        // while the protocol status is not closed, listen and handle any incoming message
-        // main loop
-        
-        while (true) {
-            Protocol msg = (Protocol) in.readObject();
-            Status st = msg.getStatus();
-
-            if(st == Status.CONN_DISCONNECT)
-            {
-                System.out.println("Client " + clientId + "disconnected");
-                break;
-            }
-
-            Protocol response = handleRequest(msg);
-            
-            out.writeObject(response);
-            out.flush();
-
-        }
-
-        // once connection is broken close the socket
-        socket.close();
+        return true;
     }
 
     public Protocol handleRequest(Protocol msg)
@@ -634,7 +579,92 @@ public class ProtoServer{
                                                     )); 
         }
     }
-}
+
+    private class QueryHandler<T>
+     {
+        private DataBindings<T> query = new DataBindings<>();
+        public QueryHandler(Class <T> modelClass)
+        {
+
+        }
+
+        // bind the bindhandler query object to a Data provider
+        public void bindToDataBase(DataProvider<T> provider)
+        {
+            query.bindToDataBase(provider);
+        }
+
+        public DataBindings<T> getQuery()
+        {
+            return this.query;
+        }
+     }
+     // spool server method
+     public <T> void spoolQuery(Class<T> myclass, DataProvider<T> provider)
+     {
+        if(queries.containsKey(myclass))
+        {
+             throw new IllegalStateException("Server instance for type already exists" + myclass.getSimpleName());
+        } 
+ 
+        // if not, we're good, add the instance to the spool pool lmao
+        /*
+         * Bind it to the provider first
+         * Then add it to the hashmap
+         */
+        QueryHandler<T> query = new QueryHandler<>(myclass);
+        query.bindToDataBase(provider);
+        queries.put(myclass, query);
+        String message = "Successful, server for instance: " + myclass.getSimpleName() + " created.";
+ 
+ 
+     //    System.out.println("Successful, server for instance: " + myclass.getSimpleName() + " created.");
+ 
+     // log the error message
+        server_parrot.log(message);
+     }
+ 
+     // get server from ConcurrentHashmap method
+     @SuppressWarnings("unchecked")
+     public <T> QueryHandler<T> getQuery(Class<T> myclass)
+     {
+         return (QueryHandler<T>) queries.get(myclass);
+     }
+ 
+     public boolean matchesTypeKey(String typekey, Class<?> modelClass)
+     {
+         return modelClass.getSimpleName().equalsIgnoreCase(typekey);
+     }
+ 
+     @SuppressWarnings("unchecked")
+     public <T> QueryHandler<T> findQueryHandlerByTypeKey(String typekey, ConcurrentHashMap<Class<?>, QueryHandler<?>>queries)
+     {
+         for(Class<?> modelClass: queries.keySet())
+         {
+             // this makes sure we ignore case sensitivity e.g. User and USER works
+             // TODO: check if this is a bad idea
+ 
+             // TODO: handle the casting ambiguities
+             if(modelClass.getSimpleName().equalsIgnoreCase(typekey))
+             {
+                 return (QueryHandler<T>) queries.get(modelClass);
+             }
+         }
+ 
+         // nothing found
+         return null;
+     }
+ 
+     
+    // remember to actually write the DataProvider
+    // public void bindToDataBase(DataProvider<T> provider)
+    // {
+    //     database.bindToDataBase(provider);
+    // }
+
+
+
+
 
 
 
@@ -647,3 +677,6 @@ public class ProtoServer{
      */
 
    
+
+}
+    

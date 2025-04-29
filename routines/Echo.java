@@ -25,5 +25,12 @@ public class Echo {
         String formatting = "[ " + name + " ]" + ": " + message;
         System.out.println(formatting);
     }
+
+    public String log_err_with_ret(Exception e)
+    {
+        String formatting = "[ " + name + " ]" + ": " + e.getMessage();
+        System.out.println(formatting);
+        return formatting;
+    }
 }   
 

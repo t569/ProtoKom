@@ -30,6 +30,19 @@ public class Protocol implements Serializable{
         this.packet = packet;
     }
 
+    // for debugging purposes
+    public Protocol()
+    {
+        this.status = null;
+        this.packet = null;
+    }
+
+    public Protocol(Status status)
+    {
+        this.status = status;
+        this.packet = null;
+    }
+
     public Packet getPacket()
     {
         return this.packet;
@@ -98,7 +111,7 @@ public class Protocol implements Serializable{
             // this is to handle the get and delete handlers.
             // Basic idea is just to have an optional string object which represents a key
             // this optional, MUST be something if the protocol is a GET or DELETE based on id
-            private Optional<String> typeKey;
+            private String typeKey;
 
             // 5 Constructors is crazy, i know!!!!!!
 
@@ -109,21 +122,21 @@ public class Protocol implements Serializable{
 
                 this.comm_protocol = null;  // useful during the handshake phase
                 this.payload = null;
-                this.typeKey = Optional.empty();
+                this.typeKey = null;
             }
 
             public MetaData(CommProtocol comm_protocol, Object payload, String typeKey)
             {
                 this.comm_protocol = comm_protocol;
                 this.payload = payload;
-                this.typeKey = Optional.ofNullable(typeKey);
+                this.typeKey = typeKey;
             }
 
             public MetaData(CommProtocol comm_protocol, Object payload)
             {
                 this.comm_protocol = comm_protocol;
                 this.payload = payload;
-                this.typeKey = Optional.empty();
+                this.typeKey = null;
             }
 
 
@@ -131,14 +144,14 @@ public class Protocol implements Serializable{
             {
                 this.comm_protocol = comm_protocol;
                 this.payload = null;
-                this.typeKey = Optional.empty();
+                this.typeKey =null;
             }
 
             public MetaData(Object payload)
             {
                 this.comm_protocol = null;
                 this.payload = payload;
-                this.typeKey = Optional.empty();
+                this.typeKey = null;
             }
 
             // Please note that this can return null so we use optional
@@ -155,7 +168,7 @@ public class Protocol implements Serializable{
 
             public Optional<String> getKey()
             {
-                return typeKey;
+                return Optional.ofNullable(typeKey);
             }
 
         }
