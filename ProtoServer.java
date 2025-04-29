@@ -7,6 +7,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import routines.Echo;
+
 import java.io.*;
 /*
  * Recieve all incoming connections
@@ -204,7 +205,7 @@ public class ProtoServer{
         // if we ever break we close the socket
         socket.close();
     }
-    
+
     private void bootClient(Socket socket, ObjectOutputStream out, String reason)
     {
         try
@@ -252,7 +253,6 @@ public class ProtoServer{
     public Protocol handleRequest(Protocol msg)
     {
         
-        // TODO: handle GET, POST, UPDATE and DELETE
         // This is finally when we consider MetaData
 
         

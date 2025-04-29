@@ -1,7 +1,4 @@
-/* 
- * Hello Guys, Welcome to my Shitty Network Protocol
- * I made this to make my Sockets Smarter Lmao
- */
+
 
 import java.io.Serializable;
 import java.util.Optional;

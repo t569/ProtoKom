@@ -21,10 +21,9 @@ public class ProtoClient {
             this.clientId = clientId;
             this.hostName = host;
 
-            
+
             // then initialise the handshake
             handshake(socket, in, out);
-            // handleServer();
 
             // all the extra request sending methods are coded independently
         }
@@ -47,6 +46,7 @@ public class ProtoClient {
 
         if(req.getStatus() == Status.CONN_DISCONNECT)
         {
+            client_parrot.log("Closing connection with " + hostName);
             // close the socket and end connection; this is done after sending the request
             this.socket.close();
         }
@@ -54,8 +54,9 @@ public class ProtoClient {
 
 
     // get a response handle it and return a protocol to send
-    public Protocol getResponse(ObjectInputStream in) throws IOException, ClassNotFoundException
+    public Protocol getResponse(ObjectInputStream in, Socket socket) throws IOException, ClassNotFoundException
     {
+        client_parrot.log("Response from server: " + hostName);
         return (Protocol) in.readObject();
 
     }
@@ -143,84 +144,4 @@ public class ProtoClient {
 
         
     }
-
-     // yes this is terrible naming im sorry, i was listening to music and was high off some stuff lmao
-    //  public void handleServer() throws IOException, ClassNotFoundException
-    //  {
-    //      // 1. Expect the CONN_INIT_HANDSHAKE signal
- 
-    //      // ERROR: lets deal with this
-    //      Protocol trig = (Protocol) in.readObject();
-    //      client_parrot.log(trig.packet.getSender());
-    //      hostName = trig.getPacket().getSender();
- 
-    //      if(trig.getStatus() != Status.CONN_INIT_HANDSHAKE)
-    //      {
-    //          if(trig.getStatus() == Status.CONN_OK)
-    //          {
-    //              client_parrot.log(clientId + "message session fine. From: " + hostName);
-    //              // we are already connected
-    //              return;
-    //          }
-    //          else 
-    //          {
-    //              throw new IOException("Handshake failed: no CONN_INIT_HANDSHAKE");
-    //          }
-    //      }
-  
-    //      // 2. Send CONN_REQ
-    //      else
-    //      {
-    //          out.writeObject(new Protocol(
-    //              Status.CONN_REQ,
-    //              new Protocol.Packet(
-    //                  clientId,                       /* sender */
-    //                  hostName,                       /* reciever */
-    //                  "CONNECTION REQUEST",
-    //                  new Protocol.Packet.MetaData()
-    //                  )
-    //          ));
-    //          out.flush();
-    //          client_parrot.log("Connection Request Sent");
-    //      }
- 
-    //      // 3. Expect CONN_ACK
-    //      Protocol ack = (Protocol) in.readObject();
-    //      if(ack.getStatus() != Status.CONN_ACK)
-    //      {
-    //          throw new IOException("Handshake failed: no CONN_ACK");
-    //      }
- 
- 
-    //      // Has been acknowledged
-         
-    //      // 4. Send CONN_CONF confirmation test
-    //      out.writeObject(new Protocol(
-    //          Status.CONN_CONF,
-    //          new Protocol.Packet(
-    //              clientId,
-    //              hostName,
-    //              "CONFIRM CONNECT",
-    //              new Protocol.Packet.MetaData()
-    //          )
-    //      ));
-    //      out.flush();
- 
-    //      // 5. Proceed or get CONN_BOOT
-    //      Protocol result = (Protocol) in.readObject();
- 
-    //      // this is bad code im sorry
-    //      String message = result.getPacket().getText().substring(5);
-    //      if(result.getStatus() == Status.CONN_BOOT)
-    //      {
-    //          throw new IOException("Booted by server: "+hostName+ " Reason: "+message);
-    //      }
-    //      else
-    //      {
-    //          // we were successful: we got a CONN_ACK or CONN_OK
-    //          // System.out.println("Successful proxy");
- 
-    //          client_parrot.log("Successful proxy");
-    //      }   
-    //  }
 }

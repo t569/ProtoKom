@@ -1,5 +1,4 @@
 package routines;
-
 public class Echo {
     private static final String implicit = "Echo";
     private String name;
@@ -32,5 +31,6 @@ public class Echo {
         System.out.println(formatting);
         return formatting;
     }
+
 }   
 
