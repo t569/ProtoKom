@@ -1,3 +1,4 @@
+package server;
 import java.net.*;
 import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -73,6 +74,19 @@ public class ProtoServer{
         acceptThread.start();
     }
 
+    public void stop() {
+        try {
+            server_parrot.log("Shutting down server...");
+            executor.shutdown(); // Terminate thread pool
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+            serverSocket.close(); // Close server socket
+        } catch (IOException | InterruptedException e) {
+            server_parrot.log_err_with_ret(e);
+        }
+    }
+
     
     // accept request from client
         // send a temp connection trigger
@@ -131,8 +145,7 @@ public class ProtoServer{
         }
 
         // =socket closing happens when we break out from protocolProcess
-        
-
+        return;
     }
         
     
@@ -140,7 +153,7 @@ public class ProtoServer{
     {
         
          // 1. CONN_INIT_HANDSHAKE TRIGGER
-         out.writeObject(new Protocol(Status.CONN_INIT_HANDSHAKE,new Protocol.Packet(name,
+         out.writeObject(new Protocol(Protocol.Status.CONN_INIT_HANDSHAKE,new Protocol.Packet(name,
                             socket.getInetAddress().toString(),
                              "BEGIN HANDSHAKE",
                             new Protocol.Packet.MetaData())));
@@ -152,13 +165,13 @@ public class ProtoServer{
         String clientId = req.getPacket().getSender();
 
         // if they make a request, check if we known them and add them, else tell them we acknowledge them
-        if(req.getStatus() == Status.CONN_REQ)
+        if(req.getStatus() == Protocol.Status.CONN_REQ)
         {
                 server_parrot.log("Connection request from "+ clientId);
 
                 // 3. Send CONN_ACK
                 out.writeObject(new Protocol(
-                Status.CONN_ACK,
+                Protocol.Status.CONN_ACK,
                 new Protocol.Packet(
                     name,                                   /*sender*/  
                     clientId,                              /*receiver*/ 
@@ -201,30 +214,29 @@ public class ProtoServer{
                 break;
             }
         }
-
-        // if we ever break we close the socket
         socket.close();
-    }
+        return;
+            // disconnect and break the connection
+        //     try {
+        //         if (!handleClientProtocol(msg, socket, in, out)) {
+        //             break;
+        //         }
+        //     } catch (Exception e) {
+        //         server_parrot.log("Exception during handling: " + e.getMessage());
+        //         break;
+        //     }
+        // }
 
-    private void bootClient(Socket socket, ObjectOutputStream out, String reason)
-    {
-        try
-        {
-            // System.out.println("Booting client" + reason);
-            server_parrot.log("Booting client: " + socket.getInetAddress() + socket.getPort() +" Reason: " + reason);
-            out.writeObject(new Protocol(
-                Status.CONN_BOOT,
-                new Protocol.Packet(
-                    name,                                   /*sender*/  
-                    socket.getInetAddress().toString(),                              /*receiver*/ 
-                    "BOOT: "+ reason,                    /*text*/ 
-                    new Protocol.Packet.MetaData()
-                )
-            ));
-            out.flush();
-            socket.close();
-        }
-        catch(IOException e) {server_parrot.log_err_with_ret(e);}
+        // server_parrot.log("we are here!");
+        // try 
+        // {
+        //     socket.close();
+        //     server_parrot.log("we are successful");
+        // }
+        // catch(Exception e){
+        //     server_parrot.log_err_with_ret(e);
+        // }
+
     }
 
     public boolean handleClientProtocol(Protocol protocol, Socket socket, ObjectInputStream in, ObjectOutputStream out) throws IOException, ClassNotFoundException
@@ -234,9 +246,9 @@ public class ProtoServer{
 
         String clientId = protocol.getPacket().getSender();
 
-        Status st = protocol.getStatus();
+        Protocol.Status st = protocol.getStatus();
 
-        if(st == Status.CONN_DISCONNECT)
+        if(st == Protocol.Status.CONN_DISCONNECT)
         {
             server_parrot.log("Client " + clientId + " disconnected");
             return false;
@@ -248,6 +260,27 @@ public class ProtoServer{
 
 
         return true;
+    }
+
+    private void bootClient(Socket socket, ObjectOutputStream out, String reason)
+    {
+        try
+        {
+            // System.out.println("Booting client" + reason);
+            server_parrot.log("Booting client: " + socket.getInetAddress() + socket.getPort() +" Reason: " + reason);
+            out.writeObject(new Protocol(
+                Protocol.Status.CONN_BOOT,
+                new Protocol.Packet(
+                    name,                                   /*sender*/  
+                    socket.getInetAddress().toString(),                              /*receiver*/ 
+                    "BOOT: "+ reason,                    /*text*/ 
+                    new Protocol.Packet.MetaData()
+                )
+            ));
+            out.flush();
+            socket.close();
+        }
+        catch(IOException e) {server_parrot.log_err_with_ret(e);}
     }
 
     public Protocol handleRequest(Protocol msg)
@@ -292,7 +325,7 @@ public class ProtoServer{
                     break;
 
                 default:
-                    returnProtocol = new Protocol(Status.CONN_OK,
+                    returnProtocol = new Protocol(Protocol.Status.CONN_OK,
                                     new Protocol.Packet(
                                         name,
                                         msg.getPacket().getSender(),
@@ -309,7 +342,7 @@ public class ProtoServer{
 
         else
         {
-            returnProtocol = new Protocol(Status.CONN_OK,
+            returnProtocol = new Protocol(Protocol.Status.CONN_OK,
                                     new Protocol.Packet(
                                         name,
                                         msg.getPacket().getSender(),
@@ -346,7 +379,7 @@ public class ProtoServer{
             // we dont have a handler for this type specified
             if(handler == null)
             {
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                     new Protocol.Packet(name,
                                                      clientID,
                                                       "GET failed: No handler for type",
@@ -357,7 +390,7 @@ public class ProtoServer{
             // now check if we actually have a payload
             if(!payload.isPresent())
             {
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                      new Protocol.Packet(name,
                                                          clientID,
                                                           "GET failed: No payload",
@@ -369,7 +402,7 @@ public class ProtoServer{
             try 
             {
                 T object_to_get = handler.getQuery().get(object_id_to_get);
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                      new Protocol.Packet(name,
                                                         clientID,
                                                          "GET: success", 
@@ -379,7 +412,7 @@ public class ProtoServer{
             }
             catch(Exception e)
             {
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                      new Protocol.Packet(name,
                                                          clientID,
                                                           "GET failed: " + e.getMessage(),
@@ -390,7 +423,7 @@ public class ProtoServer{
 
         else
         {
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                                      clientID,
                                                       "GET failed: No supplied type Key",
@@ -411,7 +444,7 @@ public class ProtoServer{
 
         if(!payload.isPresent())
         {
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                                      clientID, 
                                                      "POST failed: No payload provided",
@@ -425,7 +458,7 @@ public class ProtoServer{
 
        if(handler == null)
        {
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                                      clientID,
                                                       "POST failed: No handler for type: " + object_to_post.getClass().getName(),
@@ -437,7 +470,7 @@ public class ProtoServer{
        try 
        {
             handler.getQuery().post((T) object_to_post);
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                                     clientID,
                                                      "POST: success",
@@ -446,7 +479,7 @@ public class ProtoServer{
        }
        catch(Exception e)
        {
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                   clientID, "POST failed: " + e.getMessage(),
                                   new Protocol.Packet.MetaData(Protocol.Packet.MetaData.CommProtocol.RESPONSE_ERR)
@@ -462,7 +495,7 @@ public class ProtoServer{
 
         if(!payload.isPresent())
         {
-            return new Protocol(Status.CONN_OK, 
+            return new Protocol(Protocol.Status.CONN_OK, 
                                 new Protocol.Packet(name,
                                                  clientID, 
                                                  "UPDATE failed: No payload provided",
@@ -470,12 +503,11 @@ public class ProtoServer{
                                                   ));
         }
 
-        // TODO: handle when type cast fails
         Object object_to_update = payload.get();
         QueryHandler<T> handler = getQuery((Class<T>) object_to_update.getClass());
 
         if(handler == null){
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                                      clientID,
                                                       "UPDATE failed: No handler for type: " + object_to_update.getClass().getName(), 
@@ -486,7 +518,7 @@ public class ProtoServer{
         try
         {
             handler.getQuery().update((T) object_to_update);
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                 new Protocol.Packet(name,
                                                  clientID,
                                                   "UPDATE success", 
@@ -495,7 +527,7 @@ public class ProtoServer{
         }
         catch(Exception e)
         {
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                 new Protocol.Packet(name,
                                                      clientID,
                                                       "UPDATE failed: " + e.getMessage(), 
@@ -527,7 +559,7 @@ public class ProtoServer{
             // we dont have a handler for this type specified
             if(handler == null)
             {
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                     new Protocol.Packet(name,
                                                      clientID,
                                                       "DELETE failed: No handler for type", 
@@ -538,7 +570,7 @@ public class ProtoServer{
             // now check if we actually have a payload
             if(!payload.isPresent())
             {
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                      new Protocol.Packet(name,
                                                          clientID,
                                                           "DELETE failed: No payload",
@@ -550,7 +582,7 @@ public class ProtoServer{
             try 
             {
                 handler.getQuery().delete(object_id_to_get);
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                      new Protocol.Packet(name,
                                                         clientID, 
                                                     "DELETE: success", 
@@ -560,7 +592,7 @@ public class ProtoServer{
             }
             catch(Exception e)
             {
-                return new Protocol(Status.CONN_OK,
+                return new Protocol(Protocol.Status.CONN_OK,
                                      new Protocol.Packet(name,
                                                          clientID,
                                                         "DELETE failed: " + e.getMessage(),
@@ -571,7 +603,7 @@ public class ProtoServer{
 
         else
         {
-            return new Protocol(Status.CONN_OK,
+            return new Protocol(Protocol.Status.CONN_OK,
                                  new Protocol.Packet(name,
                                                      clientID,
                                                 "DELETE failed: No supplied type Key",
@@ -642,9 +674,6 @@ public class ProtoServer{
          for(Class<?> modelClass: queries.keySet())
          {
              // this makes sure we ignore case sensitivity e.g. User and USER works
-             // TODO: check if this is a bad idea
- 
-             // TODO: handle the casting ambiguities
              if(modelClass.getSimpleName().equalsIgnoreCase(typekey))
              {
                  return (QueryHandler<T>) queries.get(modelClass);

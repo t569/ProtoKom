@@ -1,5 +1,5 @@
+package server;
 
-// The general idea is DataBindings provide an interface to access databases or just general structures
 public class DataBindings <T>{
     
     private DataProvider<T> provider;

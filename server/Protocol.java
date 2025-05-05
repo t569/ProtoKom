@@ -1,10 +1,14 @@
+package server;
 
 
 import java.io.Serializable;
 import java.util.Optional;
 
-enum Status
-{                           // Sent by: 
+
+public class Protocol implements Serializable{
+    
+    public enum Status
+    {                           // Sent by: 
     CONN_INIT_HANDSHAKE,    // server
     CONN_BOOT,  // server
     CONN_REQ,   // client
@@ -12,10 +16,8 @@ enum Status
     CONN_CONF,  // client
     CONN_OK,    // server
     CONN_DISCONNECT // client
-}
+    }
 
-public class Protocol implements Serializable{
-    
     // in general every protocol is made up of the following
 
     // A Status and a message
@@ -50,6 +52,11 @@ public class Protocol implements Serializable{
         return this.status;
     }
 
+    public void setStatus(Status status)
+    {
+        this.status = status;
+    }
+
     public static class Packet implements Serializable
     {
         // Now this class has some extra stuff
@@ -68,6 +75,16 @@ public class Protocol implements Serializable{
             this.metadata = metadata;
         }
 
+        // empty packet
+        public Packet()
+        {
+            this.sender = null;
+            this.receiver = null;
+            this.text = null;
+            this.metadata = null;
+        }
+
+        
         public String getSender()
         {
             return this.sender;
@@ -113,7 +130,7 @@ public class Protocol implements Serializable{
             // 5 Constructors is crazy, i know!!!!!!
 
 
-            // TODO: handle all protocol cases for both client and server
+            
             public MetaData()
             {
 

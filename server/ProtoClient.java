@@ -1,6 +1,10 @@
+package server;
 import java.io.*;
 import java.net.*;
+
 import routines.Echo;
+import server.Protocol.Packet;
+import server.Protocol.Packet.MetaData;
 
 public class ProtoClient {
     private Socket socket;
@@ -38,13 +42,20 @@ public class ProtoClient {
         return this.clientId;
     }
 
-    // just send a regular request
-    public void sendRequest(Protocol req, ObjectOutputStream out) throws IOException, ClassNotFoundException
+    public String getHostName()
     {
+        return this.hostName;
+    }
+
+    
+    // just send a regular request
+    public void sendRequest(Protocol req) throws IOException, ClassNotFoundException
+    {
+        ObjectOutputStream out = this.out;
         out.writeObject(req);
         out.flush();
 
-        if(req.getStatus() == Status.CONN_DISCONNECT)
+        if(req.getStatus() == Protocol.Status.CONN_DISCONNECT)
         {
             client_parrot.log("Closing connection with " + hostName);
             // close the socket and end connection; this is done after sending the request
@@ -79,12 +90,12 @@ public class ProtoClient {
             // 2. get the intended CONN_INIT_HANDSHAKE response
             Protocol init_handshake_response = (Protocol) in.readObject();
 
-            if(init_handshake_response.getStatus() == Status.CONN_INIT_HANDSHAKE)
+            if(init_handshake_response.getStatus() == Protocol.Status.CONN_INIT_HANDSHAKE)
             {
                 // 3. send a connection request CONN_REQ
                 out.writeObject(
                     new Protocol(
-                        Status.CONN_REQ,
+                        Protocol.Status.CONN_REQ,
                         new Protocol.Packet(
                             clientId,
                             hostName,
@@ -106,7 +117,7 @@ public class ProtoClient {
             // 5. expect a CONN_ACK response
             Protocol conn_ack_response = (Protocol) in.readObject();
 
-            if(conn_ack_response.getStatus() == Status.CONN_ACK)
+            if(conn_ack_response.getStatus() == Protocol.Status.CONN_ACK)
             {
                 // the connection is okay
                 client_parrot.log("Connection Acknowledge recieved");
@@ -115,7 +126,7 @@ public class ProtoClient {
             else
             {
                 // error : abort connection and close; you were kicked
-                if(conn_ack_response.getStatus() == Status.CONN_BOOT)
+                if(conn_ack_response.getStatus() == Protocol.Status.CONN_BOOT)
                 {
                     client_parrot.log("Booted by server: " + hostName +
                                      "\n" + "Reason: "+
